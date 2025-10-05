@@ -313,7 +313,7 @@
       // 9 — Guided Writing Workshop
       { layout: 'guided_writing_workshop', gif: 'writing about earth', title: 'Bengkel Membina Karangan', title_en: 'Essay Building Workshop', timing: 15 },
       // 10 - Final Work Display with AI Feedback
-      { layout: 'final_work_feedback', title: 'Hasil Karangan & Maklum Balas AI', title_en: 'Final Essay & AI Feedback', timing: 5 },
+      { layout: 'final_work_feedback', title: 'Hasil Karangan & Maklum Balas AI ✨', title_en: 'Final Essay & AI Feedback ✨', timing: 5 },
       // 11 - Final Summary
       { layout: 'final_summary', gif: 'earth day celebration', title: 'Latihan Selesai!', title_en: 'Practice Complete!', timing: 2, end_message: 'Anda telah melengkapkan latihan ini dengan jayanya. Syabas! Teruskan usaha anda.', end_message_en: 'You have completed this practice successfully. Well done! Keep up your efforts.' }
     ];
@@ -376,8 +376,85 @@
 
 
     // --- API FUNCTIONS ---
+    async function getExpandedSentence(inputId, outputId, context) {
+        const inputEl = el(inputId);
+        const outputEl = el(outputId);
+        const text = inputEl.value;
+
+        if (!text.trim()) {
+            showToast('Sila tulis ayat anda terlebih dahulu. / Please write your sentence first.');
+            return;
+        }
+
+        outputEl.style.display = 'block';
+        outputEl.innerHTML = '<div class="loader" style="width:20px; height:20px;"></div>';
+
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${GEMINI_API_KEY}`;
+        const prompt = `You are an expert Malay language tutor assisting a 15-year-old beginner. The student has written a simple sentence for their essay on climate change. Your task is to rewrite it into a more descriptive and advanced sentence, suitable for an IGCSE-level composition. Provide two alternative suggestions. Format the output as a valid JSON object with a single key "suggestions" which is an array of two strings.\n\nStudent's sentence for the ${context}: "${text}"`;
+
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { responseMimeType: "application/json" }
+                }),
+            });
+
+            if (!response.ok) throw new Error(`API request failed: ${response.status}`);
+            const data = await response.json();
+            const result = JSON.parse(data.candidates[0].content.parts[0].text);
+            
+            if (result.suggestions && result.suggestions.length > 0) {
+                let suggestionsHtml = '<p class="font-bold mb-2">Cadangan Ayat:</p><ul class="list-disc pl-5 space-y-2">';
+                result.suggestions.forEach(s => {
+                    suggestionsHtml += `<li>${s}</li>`;
+                });
+                suggestionsHtml += '</ul>';
+                outputEl.innerHTML = suggestionsHtml;
+            } else {
+                throw new Error('No suggestions found.');
+            }
+        } catch (error) {
+            console.error("Error fetching expanded sentence:", error);
+            outputEl.innerHTML = '<p class="text-red-600">Gagal mendapatkan cadangan. Sila cuba lagi.</p>';
+        }
+    }
+
+    async function getTranslation(textToTranslate, targetLang, outputElementId) {
+        const outputEl = el(outputElementId);
+        if (!textToTranslate.trim()) {
+            outputEl.textContent = 'Sila masukkan perkataan. / Please enter a word.';
+            return;
+        }
+        outputEl.innerHTML = '<div class="loader" style="width:20px; height:20px; margin: 0;"></div>';
+
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${GEMINI_API_KEY}`;
+        const sourceLang = targetLang === 'ms' ? 'English' : 'Malay';
+        const prompt = `Translate the following word/phrase from ${sourceLang} to ${targetLang === 'ms' ? 'Malay' : 'English'}. Provide only the translated text, nothing else.\n\nText: "${textToTranslate}"`;
+
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }]
+                }),
+            });
+
+            if (!response.ok) throw new Error(`API request failed: ${response.status}`);
+
+            const data = await response.json();
+            const translatedText = data.candidates[0].content.parts[0].text.trim();
+            outputEl.textContent = translatedText;
+        } catch (error) {
+            console.error("Error fetching translation:", error);
+            outputEl.textContent = 'Terjemahan gagal. / Translation failed.';
+        }
+    }
+
     async function fetchGiphy(query, containerId) {
-        // ... (API call code remains the same as previous version)
         const container = el(containerId);
         if (!container) return;
         container.innerHTML = '<div class="loader"></div>';
@@ -400,6 +477,8 @@
         // ... (API call code remains the same)
         const feedbackContainer = el('ai-feedback-container');
         if (!feedbackContainer) return;
+        feedbackContainer.innerHTML = `<div class="flex flex-col items-center justify-center h-full"><div class="loader"></div><p class="text-gray-600 mt-2">AI sedang membaca tulisan anda...<br><span class="translation">AI is reading your writing...</span></p></div>`;
+
 
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${GEMINI_API_KEY}`;
         const prompt = `
@@ -555,6 +634,17 @@
                   <p class="mb-4">${slide.task}<br><span class="translation">${slide.task_en}</span></p>
                   <textarea id="${slide.answerId}" class="answer" placeholder="Tulis jawapan anda di sini... / Write your answer here..."></textarea>
                   <button onclick="saveAnswer('${slide.answerId}')" class="btn btn-success mt-3">Simpan Jawapan / Save Answer</button>
+
+                  <hr class="my-4 border-yellow-300">
+                  <div class="space-y-2">
+                      <h4 class="font-bold text-sm">✨ Pembantu Terjemahan Segera<br><span class="translation">Instant Translation Helper</span></h4>
+                      <div class="flex items-center gap-2">
+                        <input type="text" id="translate-input-${slideIndex}" class="w-full text-sm p-2 border border-gray-300 rounded-lg" placeholder="Taip perkataan / Type a word...">
+                        <button onclick="handleTranslationRequest(${slideIndex})" class="btn btn-ghost !p-2">Terjemah / Translate</button>
+                      </div>
+                      <div id="translate-output-${slideIndex}" class="text-sm font-bold text-blue-700 min-h-[1.5em] pt-1"></div>
+                  </div>
+
                 </div>
               </div>
             </div>`;
@@ -620,7 +710,7 @@
                     </div>
                   </div>
                   <div>
-                    <h3 class="font-bold text-xl mb-3">Maklum Balas Guru AI<br><span class="translation">AI Teacher Feedback</span></h3>
+                    <h3 class="font-bold text-xl mb-3">Maklum Balas Guru AI ✨<br><span class="translation">AI Teacher Feedback ✨</span></h3>
                     <div id="ai-feedback-container" class="feedback-box h-full overflow-y-auto" style="max-height: 500px;">
                       <div class="flex flex-col items-center justify-center h-full">
                         <div class="loader"></div>
@@ -704,11 +794,44 @@
                 <!-- Writing Steps Container -->
                 <div id="writing-steps">
                     <!-- Step 1: Pengenalan -->
-                    <div id="workshop-step-1" class="workshop-step card p-6"><h3 class="font-bold text-xl mb-3">1️⃣ Pengenalan (Nyatakan Masalah)<br><span class="translation">Introduction (State the Problem)</span></h3><p class="activity-box mb-4 text-sm">Guna templat ini: <b>Perubahan iklim ialah masalah [kata sifat, cth: besar, serius]. Ia memberi kesan kepada [dunia / negara saya].</b><br><span class="translation">Use this template: <b>Climate change is a [adjective, e.g., big, serious] problem. It affects [the world / my country].</b></span></p><textarea id="workshop-intro" class="answer mb-3" placeholder="Tulis ayat pengenalan anda... / Write your introduction..."></textarea><div class="flex justify-end"><button onclick="nextWorkshopStep()" class="btn btn-primary">Seterusnya / Next →</button></div></div>
+                    <div id="workshop-step-1" class="workshop-step card p-6">
+                        <h3 class="font-bold text-xl mb-3">1️⃣ Pengenalan (Nyatakan Masalah)<br><span class="translation">Introduction (State the Problem)</span></h3>
+                        <p class="activity-box mb-4 text-sm">Guna templat ini: <b>Perubahan iklim ialah masalah [kata sifat, cth: besar, serius]. Ia memberi kesan kepada [dunia / negara saya].</b><br><span class="translation">Use this template: <b>Climate change is a [adjective, e.g., big, serious] problem. It affects [the world / my country].</b></span></p>
+                        <textarea id="workshop-intro" class="answer" placeholder="Tulis ayat pengenalan anda... / Write your introduction..."></textarea>
+                        <div class="flex justify-between items-start mt-2">
+                            <button onclick="getExpandedSentence('workshop-intro', 'suggestions-intro', 'introduction')" class="btn btn-ghost">✨ Kembangkan Idea / Expand Idea</button>
+                            <button onclick="nextWorkshopStep()" class="btn btn-primary">Seterusnya / Next →</button>
+                        </div>
+                         <div id="suggestions-intro" class="mt-3 text-sm p-3 bg-indigo-50 border border-indigo-200 rounded-lg" style="display: none;"></div>
+                    </div>
                     <!-- Step 2: Huraian -->
-                    <div id="workshop-step-2" class="workshop-step card p-6" style="display: none;"><h3 class="font-bold text-xl mb-3">2️⃣ Huraian (Masalah & Penyelesaian)<br><span class="translation">Elaboration (Problem & Solution)</span></h3><p class="activity-box mb-4 text-sm">Guna templat ini: <b>Satu masalah ialah [cth: banjir]. Satu penyelesaian ialah [cth: kitar semula].</b><br><span class="translation">Use this template: <b>One problem is [e.g., flood]. One solution is [e.g., recycling].</b></span></p><textarea id="workshop-body1" class="answer mb-3" placeholder="Tulis ayat huraian anda... / Write your elaboration..."></textarea><div class="flex justify-between"><button onclick="prevWorkshopStep()" class="btn btn-ghost">← Kembali / Back</button><button onclick="nextWorkshopStep()" class="btn btn-primary">Seterusnya / Next →</button></div></div>
+                    <div id="workshop-step-2" class="workshop-step card p-6" style="display: none;">
+                        <h3 class="font-bold text-xl mb-3">2️⃣ Huraian (Masalah & Penyelesaian)<br><span class="translation">Elaboration (Problem & Solution)</span></h3>
+                        <p class="activity-box mb-4 text-sm">Guna templat ini: <b>Satu masalah ialah [cth: banjir]. Satu penyelesaian ialah [cth: kitar semula].</b><br><span class="translation">Use this template: <b>One problem is [e.g., flood]. One solution is [e.g., recycling].</b></span></p>
+                        <textarea id="workshop-body1" class="answer" placeholder="Tulis ayat huraian anda... / Write your elaboration..."></textarea>
+                        <div class="flex justify-between items-start mt-2">
+                            <div>
+                                <button onclick="getExpandedSentence('workshop-body1', 'suggestions-body1', 'elaboration')" class="btn btn-ghost">✨ Kembangkan Idea / Expand Idea</button>
+                                <button onclick="prevWorkshopStep()" class="btn btn-ghost">← Kembali / Back</button>
+                            </div>
+                            <button onclick="nextWorkshopStep()" class="btn btn-primary">Seterusnya / Next →</button>
+                        </div>
+                        <div id="suggestions-body1" class="mt-3 text-sm p-3 bg-indigo-50 border border-indigo-200 rounded-lg" style="display: none;"></div>
+                    </div>
                     <!-- Step 3: Penutup -->
-                    <div id="workshop-step-3" class="workshop-step card p-6" style="display: none;"><h3 class="font-bold text-xl mb-3">3️⃣ Penutup (Harapan Anda)<br><span class="translation">Conclusion (Your Hope)</span></h3><p class="activity-box mb-4 text-sm">Guna templat ini: <b>Saya harap kita semua boleh [cth: jaga bumi]. Saya akan [tindakan peribadi, cth: jimat tenaga].</b><br><span class="translation">Use this template: <b>I hope we can all [e.g., take care of the earth]. I will [personal action, e.g., save energy].</b></span></p><textarea id="workshop-conclusion" class="answer mb-3" placeholder="Tulis ayat penutup anda... / Write your conclusion..."></textarea><div class="flex justify-between"><button onclick="prevWorkshopStep()" class="btn btn-ghost">← Kembali / Back</button><button onclick="combineArticle()" class="btn btn-success">✅ Gabungkan Teks / Combine Text</button></div></div>
+                    <div id="workshop-step-3" class="workshop-step card p-6" style="display: none;">
+                        <h3 class="font-bold text-xl mb-3">3️⃣ Penutup (Harapan Anda)<br><span class="translation">Conclusion (Your Hope)</span></h3>
+                        <p class="activity-box mb-4 text-sm">Guna templat ini: <b>Saya harap kita semua boleh [cth: jaga bumi]. Saya akan [tindakan peribadi, cth: jimat tenaga].</b><br><span class="translation">Use this template: <b>I hope we can all [e.g., take care of the earth]. I will [personal action, e.g., save energy].</b></span></p>
+                        <textarea id="workshop-conclusion" class="answer" placeholder="Tulis ayat penutup anda... / Write your conclusion..."></textarea>
+                        <div class="flex justify-between items-start mt-2">
+                            <div>
+                               <button onclick="getExpandedSentence('workshop-conclusion', 'suggestions-conclusion', 'conclusion')" class="btn btn-ghost">✨ Kembangkan Idea / Expand Idea</button>
+                               <button onclick="prevWorkshopStep()" class="btn btn-ghost">← Kembali / Back</button>
+                            </div>
+                            <button onclick="combineArticle()" class="btn btn-success">✅ Gabungkan Teks / Combine Text</button>
+                        </div>
+                        <div id="suggestions-conclusion" class="mt-3 text-sm p-3 bg-indigo-50 border border-indigo-200 rounded-lg" style="display: none;"></div>
+                    </div>
                     <!-- Final Combined Article -->
                     <div id="workshop-step-4" class="workshop-step card p-6" style="display: none;"><h3 class="font-bold text-xl mb-3">🎉 Karangan Lengkap Anda<br><span class="translation">Your Complete Essay</span></h3><p class="stimulus-box mb-4 text-sm">Semak dan edit jika perlu.<br><span class="translation">Check and edit if needed.</span></p><textarea id="finalArticle" class="answer mb-4" style="min-height: 250px;"></textarea><div class="flex justify-between items-center mb-4"><span class="text-sm text-gray-600">Bilangan Perkataan: <span id="workshopWordCount">0</span></span><span class="text-sm text-gray-600">Sasaran: ~30-50 perkataan</span></div><div class="w-full bg-gray-200 rounded-full h-2 mb-4"><div id="workshopProgressBar" class="bg-blue-500 h-2 rounded-full" style="width: 0%"></div></div><div class="flex gap-3"><button onclick="prevWorkshopStep()" class="btn btn-ghost">← Edit</button><button onclick="completeWorkshop()" class="btn btn-success">✅ Selesai / Finish</button></div></div>
                 </div>
@@ -720,6 +843,18 @@
     }
 
     // --- EVENT HANDLERS & HELPERS ---
+    function handleTranslationRequest(slideIndex) {
+        const inputEl = el(`translate-input-${slideIndex}`);
+        const outputElId = `translate-output-${slideIndex}`;
+        const text = inputEl.value;
+        
+        // Simple language detection: if it contains mostly English chars, translate to Malay. Otherwise, to English.
+        const isEnglish = /^[a-zA-Z\s.,!?']+$/.test(text);
+        const targetLang = isEnglish ? 'ms' : 'en';
+
+        getTranslation(text, targetLang, outputElId);
+    }
+    
     function setupNameEntry() {
         const nameInput = el('nameInput');
         const startBtn = el('startLessonBtn');
